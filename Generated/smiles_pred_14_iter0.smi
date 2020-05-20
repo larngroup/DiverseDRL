@@ -1,0 +1,14 @@
+CC(=O)NC(CCc1ccccc1)C(=O)N1CCC(c2cc(F)ccc2F)C1               ,6.359877
+CC(C)(C)NCC(O)COc1ccc(O)c(-c2ccc3c(=O)cc(C(=O)O)oc3c2)c1     ,6.8250747
+CC(C)CNC(=O)C1CCCN1C(=O)c1ccc2c(c1)OCO2                      ,6.404312
+CC1(C)C(O)CC2(C)C(C(O)CCC3(C)C(O)CCC32)C1O                   ,7.326226
+CC1CN(C(=O)COC(=O)c2cccs2)CCO1                               ,6.273097
+CCN1CCCC(CNc2nc(NCc3cccs3)nc(N3CCN(C)CC3)n2)C1               ,6.105853
+CCOC(=O)C1=C(C)NCCN1C(=O)c1ccc(C)cc1                         ,6.8102713
+CCOc1ccc(CCNC(=O)CSc2nnc(C(=O)O)n2Cc2ccco2)cc1               ,5.3096843
+CCc1ccc(N2CC(C(=O)O)CC2=O)cc1                                ,6.519615
+COc1cc(C2(O)CCN(CCCCOc3ccccc3)CC2)ccc1-n1c(C)ccc1C           ,6.0633054
+COc1ccc(C(=O)C=Cc2ccccc2)cc1O                                ,5.48542
+COc1ccc(CC(NC(=O)C2CCCN2C(=O)C2CCCCC2)C(=O)CO)cc1            ,6.782228
+COc1ccc(CCNC(=O)c2ccc(CC(=O)NCC3CCCO3)cc2)cc1OC              ,7.6653037
+Cc1cccc(OCc2c(C)n(CCCN(C)C)c3ccccc23)c1C                     ,6.209591
