@@ -1,6 +1,17 @@
 import numpy as np
 
 class SmilesToTokens(object):
+    """
+    Function that performs SMILES tokenization and transformation to one-hot 
+    encoding using all possible tokens including starting, ending and padding 
+    characters.
+    Parameters
+    ----------
+    smiles: List with SMILES strings
+    Returns
+    -------
+    This function returns an one-hot encoding array.
+    """
     def __init__(self):
         atoms = [
                  'H','B', 'C', 'N', 'O', 'P', 'S', 'F', 'Cl', 'Br', 'I'

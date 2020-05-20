@@ -5,13 +5,6 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint
 from Smiles_to_tokens import SmilesToTokens
 
 class BaseModel(object):
-    """
-    This function constructs the object of the generator model. It defines the 
-    model architecture and all the parameters are defined in the configuration 
-    file
-    ----------
-    config: configuration file 
-    """
     def __init__(self, config):
         self.config = config
         self.model = None
@@ -60,5 +53,5 @@ class Model(BaseModel):
         self.model.compile(
                 optimizer=self.config.optimizer,
                 loss= 'mse', #'categorical_crossentropy',
-                metrics=['accuracy']
+#                metrics=['accuracy']
                 )

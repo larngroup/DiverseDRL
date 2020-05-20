@@ -4,7 +4,6 @@ Created on Tue Oct 29 11:08:18 2019
 
 @author: Tiago
 """
-import numpy as np
 
 class tokens_table(object):
     def __init__(self):

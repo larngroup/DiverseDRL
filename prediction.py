@@ -4,15 +4,12 @@ Created on Fri Oct 11 21:46:42 2019
 
 @author: Tiago
 """
-import tensorflow as tf 
 from tensorflow.keras.models import model_from_json
-import sklearn.metrics
 import numpy as np
 from utils import *
-from tokens import tokens_table
 
 class Predictor(object):
-    def __init__(self, config, tokens,labels,property_identifier):
+    def __init__(self, config,property_identifier):
         """
         Constructor for the Predictor object.
         Parameters
@@ -28,8 +25,14 @@ class Predictor(object):
         This function loads the Predictor models already trained
         """
         super(Predictor, self).__init__()
-        self.labels = labels
-        self.tokens = tokens
+        self.labels = reading_csv(config,property_identifier)
+        
+        self.tokens = [
+                 'H','Cl', 'Br','B', 'C', 'N', 'O', 'P', 'S', 'F', 'I',
+                '(', ')', '[', ']', '=', '#', '@', '*', '%', '0', '1', '2',
+                '3', '4', '5', '6', '7', '8', '9', '.', '/', '\\', '+', '-',
+                 'c', 'n', 'o', 's','p', ' ']
+        
         self.config = config
 
         loaded_models = []
@@ -37,6 +40,8 @@ class Predictor(object):
             model_path = "predictor_models_jak2\\model"
         elif property_identifier == "logP":
             model_path = "predictor_models_logP\\model"
+        elif property_identifier == "kor":
+            model_path = "predictor_models_kor\\model"
             
         for i in range(5):
             
@@ -71,13 +76,16 @@ class Predictor(object):
         
         d = smilesDict(self.tokens)
   
-        smiles_int = smiles2idx(smiles_padded,d)
+        tokens = tokenize(smiles_padded,self.tokens)
+                          
+        smiles_int = smiles2idx(tokens,d)
         
         prediction = []
             
         for m in range(len(self.loaded_models)):
-                prediction.append(self.loaded_models[m].predict(smiles_int))
-                
+            
+            prediction.append(self.loaded_models[m].predict(smiles_int))
+
         prediction = np.array(prediction).reshape(len(self.loaded_models), -1)
         
         prediction = denormalization(prediction,self.labels)
