@@ -58,7 +58,7 @@ The implemented strategy allowed to intercalate the used Generator to predict th
 
 
 
-​				![generation](C:\Users\Tiago\Pictures\Saved Pictures\dissertation\generation.png)
+​				![generation](https://github.com/larngroup/DiverseDRL/blob/master/Figures/generation.png?raw=true)
 
 
 
