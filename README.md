@@ -32,7 +32,7 @@ The general methodology for single-objective optimization, referring to individu
 
 
 
-### ![pipeline](C:\Users\Tiago\Pictures\Saved Pictures\article\pipeline.jpg)
+### ![pipeline](https://github.com/larngroup/DiverseDRL/blob/master/Figures/pipline.pdf)
 
 
 
