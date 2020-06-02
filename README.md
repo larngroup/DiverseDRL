@@ -48,9 +48,9 @@ This is a QSAR model whose function is to make a mapping between the generated m
 
 At this point, the objective was to develop a versatile method that would allow the Generator to adapt to the requested property and generate molecules with that property, modified as desired. This has been done successfully for properties such as affinity for the K-opioid receptor and quantitative estimate of drug-likeness. The RL method used was policy-gradient-based, that is, the search for the optimal policy was made directly. Therefore, it was possible to bias the Generator so that it generates compounds with greater or lesser affinity for KOR and with higher QED values, independently. Nevertheless, with our exploratory strategy it was possible to achieve this objective and maintain the variability and synthesizability of the compounds at very acceptable rates.
 
-![kor_max](C:\Users\Tiago\Downloads\kor_max.png)
+![kor_max](https://github.com/larngroup/DiverseDRL/blob/master/Figures/kor_max.png?raw=true)
 
-![qed_max](C:\Users\Tiago\Downloads\qed_max.png)
+![qed_max](https://github.com/larngroup/DiverseDRL/blob/master/Figures/qed_max.png?raw=true)
 
 
 
