@@ -1,15 +1,10 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Oct  7 23:22:10 2019
-
-@author: Tiago
-"""
 import csv
 import numpy as np
-from sklearn.model_selection import KFold, train_test_split
 import math
 import random
 import json
+from sklearn.model_selection import KFold
 import matplotlib.pyplot as plt
 from bunch import Bunch
 import time
@@ -96,7 +91,16 @@ def get_tokens(smiles):
            
 
 def smilesDict(tokens):
+    """
+    This function computes the dictionary that makes the correspondence between 
+    each token and an given integer.
+    ----------
+    tokens: Set of characters
     
+    Returns
+    -------
+    tokenDict: Returns the dictionary that maps characters to integers
+    """
     tokenDict = dict((token, i) for i, token in enumerate(tokens))
     return tokenDict
 
@@ -111,6 +115,8 @@ def pad_seq(smiles,tokens,paddSize):
     Returns
     -------
     newSmiles: Returns the padded smiles, all with the same size.
+    maxLength: Integer that indicates the paddsize. It will be used to perform 
+                padding of new sequences.
     """
     maxSmile= max(smiles, key=len)
     maxLength = 0
@@ -128,8 +134,8 @@ def pad_seq(smiles,tokens,paddSize):
              
 def smiles2idx(smiles,tokenDict):
     """
-    This function transforms each SMILES character to the correspondent integer,
-    according the token dictionary previously computed.
+    This function transforms each SMILES token to the correspondent integer,
+    according the token-integer dictionary previously computed.
     ----------
     smiles: Set of SMILES strings with different sizes;
     tokenDict: Dictionary that maps the characters to integers;    
@@ -152,14 +158,19 @@ def data_division(config,smiles_int,labels,cross_validation,model_type,descripto
     This function divides data in two or three sets. If we are performing 
     grid_search we divide between training, validation and testing sets. On 
     the other hand, if we are doing cross-validation, we just divide between 
-    train/validation and test sets.
+    train/validation and test sets because the train/validation set will be then
+    divided during CV.
     ----------
     config: configuration file;
     smiles_int: List with SMILES strings set;
     labels: List with label property set;
+    cross_validation: Boolean indicating if we are dividing data to perform 
+                      cross_validation or not;
+    model_type: String indicating the type of model (dnn, SVR, KNN or RF)
+    descriptor: String indicating the descriptor (ECFP or SMILES)
     Returns
     -------
-    data: List with the Lists of the splitted data.
+    data: List with the sets of the splitted data.
     """ 
     data = []
     
@@ -210,12 +221,11 @@ def data_division(config,smiles_int,labels,cross_validation,model_type,descripto
 def cv_split(data,config):
     """
     This function performs the data spliting into 5 consecutive folds. Each 
-    fold is then used once as a validation while the 4 remaining folds 
+    fold is then used once as a test set while the 4 remaining folds 
     form the training set.
     ----------
     config: configuration file;
-    smiles: List with SMILES strings set;
-    labels: List with label property set;
+    data: List with the list of SMILES strings set and a list with the label;
     Returns
     -------
     data: object that contains the indexes for training and testing for the 5 
@@ -287,11 +297,10 @@ def ccc(y_true,y_pred):
 
 def normalize(data):
     """
-    This function implements the normalization step.
+    This function implements the percentile normalization step (to avoid the 
+    interference of outliers).
     ----------
-    y_train: List with train labels
-    y_test: List with test labels
-    y_val: List with validation labels
+    data: List of label lists. It contains the y_train, y_test, and y_val (validation)
     Returns
     -------
     Returns z_train, z_test, z_val (normalized targets) and data (values to 
@@ -391,7 +400,6 @@ def load_config(config_file,property_identifier):
 
 
 def directories(dirs):
-
 	try:
 		for dir_ in dirs:
 			if not os.path.exists(dir_):
@@ -400,6 +408,7 @@ def directories(dirs):
 	except Exception as err:
 		print('Creating directories error: {}'.format(err))
 		exit(-1)
+        
 
 def SMILES_2_ECFP(smiles, radius=3, bit_len=4096, index=None):
     """
@@ -409,7 +418,7 @@ def SMILES_2_ECFP(smiles, radius=3, bit_len=4096, index=None):
     smiles: List of SMILES strings to transform
     Returns
     -------
-    This function transforms each SMILES strings into a vector of 4096 elements
+    This function return the SMILES strings transformed into a vector of 4096 elements
     """
     fps = np.zeros((len(smiles), bit_len))
     for i, smile in enumerate(smiles):

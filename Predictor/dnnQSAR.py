@@ -1,9 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Oct 29 11:17:50 2019
-
-@author: Tiago
-"""
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Dense, Embedding, LSTM, Input,GRU, Dropout
 from tensorflow.keras.callbacks import  ModelCheckpoint
@@ -21,7 +16,8 @@ class BaseModel(object):
         ----------
         config: Configuration file (It contains all the necessary parameters)
         data: List containing Training and Validation data
-        searchParams: String indicating if we are searching for the best parameters or implementing the optimal model
+        searchParams: Boolean indicating if we are searching for the best parameters
+                      or implementing the optimal model
         descriptor_type: String that specifies the model descriptor (SMILES or ECFP)
         Returns
         -------
@@ -56,6 +52,10 @@ class Model(BaseModel):
         
     
     def build_model(self, n_table):
+        """
+        Depending on the descriptor type, it implements two different architectures
+        For SMILES strings, we use a RNN. For the ECFP vectors, we use FCNN with 3 FC layers
+        """
         self.n_table = n_table
         self.model = Sequential()
         
@@ -96,7 +96,7 @@ class Model(BaseModel):
         
         opt = Adam(lr=self.learning_rate, beta_1=self.config.beta_1, beta_2=self.config.beta_2, amsgrad=False)
             	
-        es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10, restore_best_weights=True)
+        es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=20, restore_best_weights=True)
         mc = ModelCheckpoint('best_model.h5', monitor='val_loss', mode='min', verbose=1, save_best_only=True)
         self.model.compile(loss=self.config.loss_criterium, optimizer = opt, metrics=[r_square,rmse,ccc])
 

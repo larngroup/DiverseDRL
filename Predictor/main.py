@@ -1,9 +1,4 @@
  # -*- coding: utf-8 -*-
-"""
-Created on Thu Oct 10 10:25:29 2019
-
-@author: Tiago
-"""
 import numpy as np
 import os
 import tensorflow as tf
@@ -14,19 +9,15 @@ from alternativeQSAR import build_models
 from tokens import tokens_table
 from prediction import Predictor
 from grid_search_models import grid_search
-from tensorflow.python.framework import ops
 
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 session = tf.compat.v1.Session()
 K.set_session(session)
 
-#from tensorflow.python.client import device_lib 
-#print(device_lib.list_local_devices())
-
 config_file = 'configPredictor.json' # Name of the configuration file 
 property_identifier = 'kor' # 'logP', jak2 or 'kor'
-model_type = 'dnn' # 'dnn', 'SVM', 'RF', or 'KNN'
-descriptor = 'ECFP' # The type of descriptor can be 'SMILES' or 'ECFP'. If we want to use 
+model_type = 'SVR' # 'dnn', 'SVR', 'RF', or 'KNN'
+descriptor = 'ECFP' # The type of model's descriptor can be 'SMILES' or 'ECFP'. If we want to use 
 #rnn architecture we use SMILES. Conversely, if we want to use a fully connected architecture, we use ECFP descriptors. 
 searchParameters = False # True (gridSearch) or False (train with the optimal parameters)
     
@@ -41,7 +32,7 @@ def main():
     
     # Load the table of possible tokens
     token_table = tokens_table().table
-    
+
     # Read and extract smiles and labels from the csv file
     smiles_raw,labels_raw = reading_csv(config,property_identifier)
 
@@ -133,7 +124,7 @@ def main():
     utils = []
     metrics = []
     for split in data_cv:
-        print('Cross validation, fold number ' + str(i) + ' in progress...')
+        print('\nCross validation, fold number ' + str(i) + ' in progress...')
         data_i = []
         train, val = split
         
@@ -175,7 +166,7 @@ def main():
 
         i+=1
     
-    # Model's evaluation with two SMILES strings 
+    # Model's evaluation with two example SMILES strings 
     predictor= Predictor(config,token_table,model_type,descriptor)
     list_ss = ["CC(=O)Nc1cccc(C2(C)CCN(CCc3ccccc3)CC2C)c1","CN1CCC23CCCCC2C1Cc1ccc(O)cc13"] #5.96 e 8.64
     prediction = predictor.predict(list_ss,utils)
@@ -183,12 +174,15 @@ def main():
     
     # Model's evaluation with the test set
     metrics = predictor.evaluator(data_i)
-    print("\n\nMean_squared_error: ",metrics[0],"\nR_square: ", metrics[1], "\nRoot mean square: ",metrics[2], "\nCCC: ",metrics[3])
-   
+    
+    if model_type == 'dnn':
+        print("\n\nMean_squared_error: ",metrics[0],"\nQ_squared: ", metrics[1], "\nRoot mean squared: ",metrics[2], "\nCCC: ",metrics[3])
+    else:
+        print("\n\nMean_squared_error: ",metrics[0],"\nQ_squared: ", metrics[1])
 if __name__ == '__main__': 
     
     start = time.time()
     print("start time:", start)
     main()
     end = time.time()
-    print("\n\n Finish! Time is:", end - start)
+    print("\n\n Finish! Time is (s):", end - start)

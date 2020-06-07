@@ -1,16 +1,9 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Fri Oct 11 21:46:42 2019
-
-@author: Tiago
-"""
-import tensorflow as tf 
 from tensorflow.keras.models import model_from_json
-import sklearn.metrics
 import numpy as np
 from sklearn.externals import joblib
 from utils import *
-from tokens import tokens_table
+from sklearn.metrics import r2_score,mean_squared_error
 from tensorflow.keras.optimizers import Adam
 
 class Predictor(object):
@@ -69,7 +62,7 @@ class Predictor(object):
             
             smiles_padded,kl = pad_seq(smiles,self.tokens,self.config.paddSize)
             d = smilesDict(self.tokens)  
-            tokenized_smiles = tokenize(smiles_padded,tokens)   
+            tokenized_smiles = tokenize(smiles_padded,self.tokens)   
             data_2_predict = smiles2idx(tokenized_smiles,d)
             
         else:
@@ -108,11 +101,14 @@ class Predictor(object):
             
             if self.model_type != 'dnn':
                 y_pred = self.loaded_models[m].predict(smiles)
-                q2 = r_square(label, y_pred)
-                ms_error = mse(label, y_pred)
-                rms_error = rmse(label,y_pred)
-                ccc_value = ccc(label,y_pred)
-                metrics.append([ms_error,q2,rms_error,ccc_value])
+                q2 = r2_score(label, y_pred)
+                ms_error = mean_squared_error(label, y_pred)
+#                rms_error = rmse(label,y_pred)
+#                ccc_value = ccc(label,y_pred)
+                print("MODEL ",m)
+                print("Q2: ",q2)
+                print("mse: ",ms_error)
+                metrics.append([ms_error,q2])
                 prediction.append(y_pred)
                 
             else:
@@ -124,6 +120,10 @@ class Predictor(object):
         prediction = np.mean(prediction, axis = 0)
         regression_plot(label,prediction)
         
+        if self.model_type == 'dnn':
+            metrics = np.array(metrics).reshape(len(self.loaded_models), -1)
+            metrics = metrics[:,1:5]
+            
         metrics = np.mean(metrics, axis = 0)
       
         return metrics
