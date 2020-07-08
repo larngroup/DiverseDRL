@@ -6,7 +6,6 @@ Created on Mon Oct  7 23:22:10 2019
 """
 import csv
 import numpy as np
-from sklearn.model_selection import KFold, train_test_split
 from sascorer_calculator import SAscore
 from rdkit import Chem
 import matplotlib.pyplot as plt
@@ -16,7 +15,6 @@ import json
 import time
 from bunch import Bunch
 from tqdm import tqdm
-from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit import DataStructs
 from rdkit.Chem import QED
@@ -48,7 +46,7 @@ def reading_csv(config,property_identifier):
     
     Returns
     -------
-    raw_labels: Returns the labels in a numpy array. 
+    raw_labels: Returns the respective labels in a numpy array. 
     """
     if property_identifier == "jak2":
         file_path = config.file_path_jak2
@@ -72,22 +70,16 @@ def reading_csv(config,property_identifier):
                     pass
             elif property_identifier == "logP":
                 raw_labels.append(float(row[2]))
-    
  
-#    labels = []
-#    for i in range(len(raw_smiles)):
-#        if len(raw_smiles[i])<100:
-#            smiles.append(raw_smiles[i])
-#            labels.append(raw_labels[i])
             
     return raw_labels
 
 def smilesDict(tokens):
     """
-    This function extracts the dictionary that makes the correspondence between
-    each charachter and an integer.
+    This function computes the dictionary that makes the correspondence between
+    each token and an integer.
     ----------
-    tokens: Set of characters that can be on SMILES string
+    tokens: Set of characters that can belong to SMILES string
     
     Returns
     -------
@@ -160,10 +152,8 @@ def scalarization(reward_kor,reward_qed,scalarMode,weights,pred_range):
     -------
     Returns the scalarized reward according to the scalarization form specified
     """
-    
     w_kor = weights[0]
     w_qed = weights[1]
-    
     max_kor = pred_range[0]
     min_kor = pred_range[1]
     max_qed = pred_range[2]
@@ -175,7 +165,7 @@ def scalarization(reward_kor,reward_qed,scalarMode,weights,pred_range):
         rescaled_rew_kor = 0
     elif rescaled_rew_kor > 1:
         rescaled_rew_kor = 1
-        
+    
     rescaled_rew_qed = (reward_qed - min_qed)/(max_qed-min_qed)
     
     if rescaled_rew_qed < 0:
@@ -183,22 +173,21 @@ def scalarization(reward_kor,reward_qed,scalarMode,weights,pred_range):
     elif rescaled_rew_qed > 1:
         rescaled_rew_qed = 1
     
-    
     if scalarMode == 'linear' or scalarMode == 'ws_linear':
-       
-        return w_kor*1*rescaled_rew_kor + w_qed*1*rescaled_rew_qed
+        return (w_kor*rescaled_rew_kor + w_qed*rescaled_rew_qed)*3.10
     
     elif scalarMode == 'chebyshev':
-        dist_qed = 0 
+        dist_qed = 0
         dist_kor = 0
-        
-        dist_qed = abs(rescaled_rew_qed - max_qed)*w_qed
-        dist_kor = abs(rescaled_rew_kor - max_kor)*w_kor
+        dist_qed = abs(rescaled_rew_qed - 1)*w_qed
+        dist_kor = abs(rescaled_rew_kor - 1)*w_kor
+        print("distance qed: " + str(dist_qed))
+        print("distance kor: " + str(dist_kor))
         
         if dist_qed > dist_kor:
-            return rescaled_rew_qed
+            return rescaled_rew_qed*3.10
         else:
-            return rescaled_rew_kor
+            return rescaled_rew_kor*3.10
 
 def canonical_smiles(smiles,sanitize=True, throw_warning=False):
     """
@@ -309,7 +298,7 @@ def plot_hist(prediction, n_to_generate,valid,property_identifier):
         plot_title = "Distribution of predicted LogP for generated molecules"
         
 #    sns.set(font_scale=1)
-    ax = sns.kdeplot(prediction, shade=True,color = 'b')
+    ax = sns.kdeplot(prediction, shade=True,color = 'g')
     ax.set(xlabel=x_label,
            title=plot_title)
     plt.show()
@@ -323,10 +312,10 @@ def plot_hist_both(prediction_unb,prediction_b, n_to_generate,valid_unb,valid_b,
     ----------
     prediction_unb: list with the desired property predictions of unbiased 
                     generator.
-    prediction_unb: list with the desired property predictions of biased 
+    prediction_b: list with the desired property predictions of biased 
                     generator.
-    n_to_generate: number of generated SMILES.
-    valid_unb: number of valid smiles of the unbiased generator, regardless of 
+    n_to_generate: number of generated molecules.
+    valid_unb: number of valid molecules of the unbiased generator, regardless of 
             the its size.
     valid_b: number of valid smiles of the biased generator, regardless of 
             the its size.
@@ -407,10 +396,10 @@ def plot_hist_both(prediction_unb,prediction_b, n_to_generate,valid_unb,valid_b,
     
 def denormalization(predictions,labels):   
     """
-    This function performs the denormalization step.
+    This function performs the denormalization of the Predictor output.
     ----------
     predictions: list with the desired property predictions.
-    labels: list with the real values of the desired property
+    labels: list with the labels of the desired property training data.
     
     Returns
     -------
@@ -429,13 +418,13 @@ def denormalization(predictions,labels):
 
 def get_reward(predictor, smile,property_identifier):
     """
-    This function takes the predictor model and the SMILES string and returns 
+    This function takes the predictor model and the SMILES string to return 
     a numerical reward for the specified property
     ----------
     predictor: object of the predictive model that accepts a trajectory
         and returns a numerical prediction of desired property for the given 
         trajectory
-    smile: SMILES string of the generated molecule
+    smile: generated molecule SMILES string
     property_identifier: String that indicates the property to optimize
     Returns
     -------
@@ -485,11 +474,11 @@ def padding_one_hot(smiles,tokens):
 
 def get_reward_MO(predictor, smile):
     """
-    This function takes the predictor model and the SMILES string and returns 
-    a numerical reward.
+    This function takes the predictor model and the SMILES string to return 
+    the numerical rewards from both the KOR and QED properties.
     ----------
     predictor: object of the predictive model that accepts a trajectory
-        and returns a numerical prediction of desired property for the given 
+        and returns a numerical prediction of KOR affinity for the given 
         trajectory
     smile: SMILES string of the generated molecule
     
@@ -518,8 +507,8 @@ def get_reward_MO(predictor, smile):
 
 def moving_average(previous_values, new_value, ma_window_size=10): 
     """
-    This function performs a simple moving average between the last 9 elements
-    and the last one obtained.
+    This function performs a simple moving average between the previous 9 and the
+    last one reward value obtained.
     ----------
     previous_values: list with previous values 
     new_value: new value to append, to compute the average with the last ten 
@@ -563,7 +552,7 @@ def plot_individual_rewds(rew_qed,rew_kor):
     plt.show()
     plt.plot(rew_kor)
     plt.xlabel('Training iterations')
-    plt.ylabel('Average losses kor')
+    plt.ylabel('Average rewards kor')
     plt.show()
     
 def plot_evolution(pred_original,pred_iteration85,property_identifier):
@@ -574,6 +563,7 @@ def plot_evolution(pred_original,pred_iteration85,property_identifier):
     ----------
     pred_original: list original model predictions
     pred_iteration85: list model predictions after 85 iterations
+    property_identifier: string that indicates the desired property
     """    
     pred_original = np.array(pred_original)
     pred_iteration85 = np.array(pred_iteration85)
@@ -623,7 +613,7 @@ def remove_padding(trajectory):
 def generate2file(predictor,generator,configReinforce,n2generate,original_model):
     """
     Function that generates a specified number of SMILES strings and predicts 
-    its SA score and possibly its pIC50. This function also saves the valid SMILES
+    its SA score and possibly its pIC50 for KOR. This function also saves the valid SMILES
     and respective predictions to a folder called "Generated".
 
     Parameters
@@ -708,6 +698,7 @@ def compute_thresh(rewards,thresh_set):
     Parameters
     ----------
     rewards: Last 3 reward values obtained from the RL method
+    thresh_set: Integer that indicates the threshold set to be used
     Returns
     -------
     This function returns a threshold depending on the recent evolution of the
@@ -839,6 +830,8 @@ def tokenize(smiles,token_table):
     This function returns an array containing lists of tokens to be transformed 
     in numbers in the next step.
     """
+
+
     tokenized = []
     
     for smile in smiles:
@@ -860,9 +853,21 @@ def tokenize(smiles,token_table):
         tokenized.append(token)
     return tokenized
 
-def searchWeights(p,cumulative_rewards,previous_weights,last_3_weights,scalarMode):
-
-    
+def searchWeights(p,cumulative_rewards,previous_weights,last_3_weights,scalarMode):    
+    """
+    This function performs the weight selection for the scalarization method 
+    Parameters
+    ----------
+    p: integer indicating the iteration of multi-objective method
+    cumulative_rewards: List with the previous scalarized combined rewards
+    previous_weights: List with the all the previous choosen weights
+    last_3_weights: List with previous weights
+    scalarMode: String indicating the type of scalarization (linear, ws_linear or
+ 	chebyshev)
+    Returns
+    -------
+    This function returns the assigned weights to perform the scalarization step.
+    """
     keepSearch = True
     if scalarMode == 'linear' or scalarMode == 'chebyshev':
         w_kor = 0.1 * p
@@ -906,6 +911,18 @@ def searchWeights(p,cumulative_rewards,previous_weights,last_3_weights,scalarMod
 
 
 def plot_MO(cumulative_rewards_qed,cumulative_rewards_kor,cumulative_rewards,previous_weights):
+    """
+    This function plots a scatter diagram with multi-objective results 
+    Parameters
+    ----------
+    cumulative_rewards_qed: List with the previous averaged rewards for QED property
+    cumulative_rewards_kor: List with the previous averaged rewards for KOR property
+    cumulative_rewards: List with the previous scalarized combined rewards
+    previous_weights: List with the all the previous choosen weights
+    Returns
+    -------
+    This function plots the scatter diagram with all results for each weights assignment
+    """
 
     plt.clf()
 

@@ -1,7 +1,6 @@
 from keras.models import Sequential
 from keras.layers import LSTM, Dense
 from keras.initializers import RandomNormal
-from keras.callbacks import EarlyStopping, ModelCheckpoint
 from Smiles_to_tokens import SmilesToTokens
 
 class BaseModel(object):
@@ -10,6 +9,14 @@ class BaseModel(object):
         self.model = None
 
 class Model(BaseModel):
+    """
+    Constructor for the Generator model
+    Parameters
+    ----------
+    Returns
+    -------
+    This function initializes the architecture for the Generator
+    """
     def __init__(self, config):
         super(Model, self).__init__(config)
         self.weight_init = RandomNormal(mean=0.0, stddev=0.05, seed=config.seed)

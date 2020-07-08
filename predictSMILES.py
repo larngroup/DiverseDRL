@@ -16,7 +16,7 @@ class BasePredictSMILES(object):
 class PredictSMILES(BasePredictSMILES):
     """
     Function that samples new SMILES strings using both the unbiased and biased
-    Generators depending on the threshold
+    Generators depending on the pred-defined threshold
     Parameters
     ----------
     model_unbiased: Unbiased Generator
@@ -39,7 +39,8 @@ class PredictSMILES(BasePredictSMILES):
         
     def sample_with_temp(self, preds): 
         """
-        Function that selects a token after applying a softmax with temperature
+        Function that selects a token after applying a softmax activation with
+        temperature
         Parameters
         ----------
         preds: Probabilities of choosing each character
@@ -56,6 +57,10 @@ class PredictSMILES(BasePredictSMILES):
         return np.random.choice(len(streched), p=streched_probs)
 
     def sample(self, num=1, minlen=1, maxlen=100, start='G'):
+        """
+        Function that generates the SMILES string, token by token, depending on 
+        the previous computed sequence 
+        """        
         sampled = []
         token_table = SmilesToTokens()
 

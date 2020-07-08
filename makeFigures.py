@@ -13,8 +13,7 @@ from rdkit import Chem
 from rdkit.Chem import Crippen
 from rdkit.Chem import Descriptors as desc
 from rdkit.Chem import QED
-from utils import reading_csv,load_config,generate2file,smiles2mol
-from tokens import tokens_table
+from utils import load_config,generate2file,smiles2mol
 from sascorer_calculator import SAscore
 from prediction import Predictor
 from keras.models import Sequential
@@ -121,8 +120,8 @@ def violin_plot(pred_identifier):
     unbiased_generator.model.load_weights(configReinforce.model_name_unbiased)
 
     # generate with unbiased
-    generate2file(predictor,unbiased_generator,configReinforce,5000,True)
-    generate2file(predictor,biased_generator,configReinforce,5000,False)
+    generate2file(predictor,unbiased_generator,configReinforce,50,True)
+    generate2file(predictor,biased_generator,configReinforce,50,False)
 #     
     plt.figure(figsize=(15, 5))
 
@@ -160,11 +159,11 @@ def performance_barplot():
     """
     Function that graphs two bar plots with the QSAR model metrics (MSE and Q2)
     """
-    objects = ('RNN', 'SVM', 'RF', 'KNN')
+    objects = ('RNN', 'SVM', 'FCNN', 'RF', 'KNN')
     y_pos = np.arange(len(objects))
-    performance_mse = [0.0299,0.0531,0.0524,0.0566]
+    performance_mse = [0.0224, 0.0306, 0.0397, 0.0255, 0.037826]
     
-    plt.bar(y_pos, performance_mse, align='center', alpha=0.5, color=['blue' ,'yellow', 'green','red'],  edgecolor='black')
+    plt.bar(y_pos, performance_mse, align='center', alpha=0.5, color=['blue' ,'yellow', 'red', 'green','orange'],  edgecolor='black')
     plt.xticks(y_pos, objects)
     plt.ylabel('MSE')
     plt.title('QSAR models evaluation: Mean Squared Error')
@@ -172,13 +171,13 @@ def performance_barplot():
     
 
     y_pos = np.arange(len(objects))
-    performance_r2 = [71.4,57.0,57.6,54.1]
+    performance_q2 = [80.12, 74.857, 66.004, 78.96, 69.144]
     
-    plt.bar(y_pos, performance_r2, align='center', alpha=0.5, color=['blue' ,'yellow', 'green','red'],  edgecolor='black')
+    plt.bar(y_pos, performance_q2, align='center', alpha=0.5, color=['blue' ,'yellow', 'red', 'green','orange'],  edgecolor='black')
 
     plt.xticks(y_pos, objects)
     plt.ylabel('Q2 Score')
-    plt.title('QSAR models evaluation: R-squared')
+    plt.title('QSAR models evaluation: Q-squared')
     plt.show()
 
 def regression_plot(y_true,y_pred):
@@ -200,6 +199,95 @@ def regression_plot(y_true,y_pred):
     ax.set_ylabel('Predicted')
     plt.show()
     
+
+def plot_MO():
+    """
+    This function plots a scatter diagram with multi-objective results 
+    Parameters
+    ----------
+    cumulative_rewards_qed: List with the previous averaged rewards for QED property
+    cumulative_rewards_kor: List with the previous averaged rewards for KOR property
+    cumulative_rewards: List with the previous scalarized combined rewards
+    previous_weights: List with the all the previous choosen weights
+    Returns
+    -------
+    This function plots the scatter diagram with all results for each weights assignment
+    """
+
+    # Linear scalarization
+#    cumulative_rewards_qed = [1.2076, 1.203, 1.2106, 1.2071, 1.1976, 1.196, 1.1918, 1.1957, 1.1913, 1.1589, 1.199]
+#    cumulative_rewards_kor = [2.328, 2.467, 2.498, 2.693, 2.696, 2.638, 2.597, 2.7578, 2.6952,  2.874, 2.676]	
+#    previous_weights = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+
+	# Weight search - linear scalarization
+#    cumulative_rewards_qed = [1.2076, 1.199, 1.196, 1.1914, 1.2178, 1.199, 1.197, 1.209, 1.1989, 1.2073,1.2056]
+#    cumulative_rewards_kor = [2.328, 2.676, 2.638, 2.7067, 2.468, 2.453, 2.574, 2.54, 2.5288, 2.5651,2.597]	
+#    previous_weights = [0, 1, 0.5, 0.75, 0.25, 0.375, 0.438, 0.406, 0.391, 0.383, 0.379]
+    
+    # Chebyshev scalarization
+#    cumulative_rewards_qed = [1.2076, 1.2129, 1.212, 1.2111, 1.19456, 1.2184, 1.1984, 1.1985, 1.20449, 1.187,1.1796 ]
+#    cumulative_rewards_kor = [2.328, 2.383, 2.453, 2.4498, 2.6202, 2.5195, 2.6927, 2.654, 2.63835, 2.778,2.783]	
+#    previous_weights = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]    
+    
+    plt.clf()
+
+    # plot the chart
+    plt.scatter(cumulative_rewards_kor,cumulative_rewards_qed)
+
+    # zip joins x and y coordinates in pairs
+    i = 0
+    for x,y in zip(cumulative_rewards_kor,cumulative_rewards_qed):
+        
+        label = '(' + "{:.2f}".format(previous_weights[i]) +", "+ "{:.2f}".format(1-previous_weights[i]) + ')' 
+
+        # this method is called for each point
+        plt.annotate(label, # this is the text
+                     (x,y), # this is the point to label
+                    textcoords="offset points", # how to position the text
+                     xytext=(0,10), # distance from text to points (x,y)
+                     ha='center') # horizontal alignment can be left, right or center
+        i+=1
+    plt.xlabel("Mean KOR reward")
+    plt.ylabel("Mean QED reward")
+    #plt.xticks(np.arange(0,10,1))
+    #plt.yticks(np.arange(0,5,0.5))
+
+    plt.show()
+    
+    
+def compute_hypervolume():
+    """
+    This function computes the hypervolume indicator based on sampled solutions
+    obtained by three scalarizations techniques
+    """
+    refPoint = [2.4,1.15]
+    
+ #   # Linear
+#    obj1 = [2.498,2.874,2.7578,2.693]
+#    obj2 = [1.2106,1.1589,1.1957,1.2071]
+    
+  #   Linear ws
+    obj1 = [2.676,2.7067,2.468,2.5651,2.597,2.54]
+    obj2 = [1.199,1.1914,1.2178,1.2073,1.2056,1.209]
+ 
+# # Chebyshev
+#    obj1 = [2.5195,2.783,2.778,2.63835,2.6927]
+#    obj2 = [1.2184,1.1796,1.187,1.20449,1.1984]
+    
+    
+    # code
+    obj1.sort()
+    obj2.sort(reverse = True)
+    hv = 0
+    
+    for i,solution1 in enumerate(obj1):
+        if i == 0:
+            hv = (solution1-refPoint[0])*(obj2[i]-refPoint[1])
+        else:
+            hv+= (solution1-obj1[i-1])*(obj2[i]-refPoint[1])
+    print("Hypervolume: " + str(hv))
+    
+    
 def main():
     """
     Main of function that plots several figures to help the interpretation of the 
@@ -209,9 +297,11 @@ def main():
     y_true = [1, 2, 3,4,5,2,2,1,3]
     y_pred = [1.1, 1.6, 3, 4.1, 4.5, 1.8, 2,1.6,3.1]
 #    regression_plot(y_true,y_pred)
-#    performance_barplot()
-    violin_plot(predictor)
+ #   performance_barplot()
+#    violin_plot(predictor)
 #    mw_logp_plot()
-
+#    plot_MO()
+#    plot_rapido()
+    compute_hypervolume()
 if __name__ == '__main__':
     main()

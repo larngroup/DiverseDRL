@@ -11,6 +11,7 @@ import numpy as np
 from Smiles_to_tokens import SmilesToTokens
 from predictSMILES import *
 from model import Model 
+from sascorer_calculator import SAscore
 from tqdm import tqdm
 from utils import * 
 from tqdm import trange
@@ -18,13 +19,11 @@ from keras.models import Sequential
 from keras import losses
 import keras.backend as K
 from keras import optimizers
-from rdkit.Chem.Draw import DrawingOptions
-from rdkit.Chem import Draw
 
 sess = tf.compat.v1.InteractiveSession()            
        
 class Reinforcement(object):
-    def __init__(self, generator, predictor, configReinforce):  
+    def __init__(self, generator, predictor, configReinforce,property_identifier):  
         """
         Constructor for the Reinforcement object.
         Parameters
@@ -35,8 +34,9 @@ class Reinforcement(object):
             predictor accepts a trajectory and returns a numerical
             prediction of desired property for the given trajectory
         configReinforce: bunch
-            Configuration file containing all the necessary specification and
-            parameters. 
+            Parameters to use in the predictive model and get_reward function 
+        property_identifier: string
+            It indicates what property we want to optimize
         Returns
         -------
         object Reinforcement used for implementation of Reinforcement Learning 
@@ -53,24 +53,35 @@ class Reinforcement(object):
         self.token_table = SmilesToTokens()
         self.table = self.token_table.table
         self.predictor = predictor
-        self.get_reward_MO = get_reward_MO
+        self.get_reward = get_reward
+        self.property_identifier = property_identifier 
+        self.all_rewards = []
+        self.all_losses = []
         self.threshold_greedy = 0.1
         self.n_table = len(self.token_table.table)
-        self.preds_range = [3.0,1.381,1.284,1.015] #3.2,1.29
-        self.best_model = '4'
-#        self.adam = optimizers.Adam(learning_rate=0.0001, beta_1=0.9, beta_2=0.999, amsgrad=False)
+#        self.sgd = optimizers.SGD(lr=0.0001, decay=1e-6, momentum=0.9, nesterov=True)
+#        self.adadelta = optimizers.Adadelta(learning_rate=0.0001, rho=0.95, epsilon=1e-07)
+#        self.adam = optimizers.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.999, amsgrad=False)
         self.adam = optimizers.Adam()
-        self.scalarization_mode = 'linear' # it can be 'linear', 'ws_linear', or 'chebyshev'
+    
 
-    def custom_loss(self,magic_matrix):
+
+    def custom_loss(self,aux_matrix):
+        """
+        Custom loss function with a auxilary matrix, computed for each batch of 
+        molecules, to properly perform the multiplication. It ignores the 
+        necessary but useless padding vectors 
+        """
         def lossfunction(y_true,y_pred):
-#            return (1/10)* K.sum(((tf.compat.v1.math.log_softmax(y_pred))*y_true)*magic_matrix)
-            return (1/self.configReinforce.batch_size)*K.sum(losses.categorical_crossentropy(y_true,y_pred)*magic_matrix)
+            return (1/self.configReinforce.batch_size)*K.sum(losses.categorical_crossentropy(y_true,y_pred)*aux_matrix)
        
         return lossfunction
 
     def get_policy_model(self,aux_array):
-
+        """
+        Function that initializes the Genetor, trained with a policy-gradient-based
+        method (new optimizer and loss function)
+        """
         self.generator_biased = Sequential()
         self.generator_biased = Model(self.configReinforce) 
         self.generator_biased.model.compile(
@@ -78,60 +89,38 @@ class Reinforcement(object):
                 loss = self.custom_loss(aux_array))
         
         return self.generator_biased.model
-        
 
     def policy_gradient(self, gamma=0.97):    
-        """
-        Implementation of the policy gradient algorithm.
+            """
+            Implementation of the policy gradient algorithm.
+    
+            Parameters:
+            -----------
+            self.n_batch: int
+                number of trajectories to sample per batch.    
+            gamma: float (default 0.97)
+                factor by which rewards will be discounted within one trajectory.
+                Usually this number will be somewhat close to 1.0.
 
-        Parameters:
-        -----------
-        self.n_batch: int
-            number of trajectories to sample per batch.    
-        gamma: float (default 0.97)
-            factor by which rewards will be discounted within one trajectory.
-            Usually this number will be somewhat close to 1.0.
-
-        Returns
-        -------
-        This function returns, at each iteration, the graphs with average 
-        reward and averaged loss from the batch of generated trajectories 
-        (SMILES). Moreover it returns the average reward for QED and KOR properties.
-        Also, it returns the used weights and the averaged scaled reward for
-         """
-         
-        pol = 9
-        cumulative_rewards = []
-        cumulative_rewards_kor = []
-        cumulative_rewards_qed = [] 
-        last_3_weights = []
-        previous_weights = []
-        keepSearch = True
-        while keepSearch:
-            weights,previous_weights,last_3_weights,keepSearch = searchWeights(pol,cumulative_rewards,previous_weights,last_3_weights,self.scalarization_mode)
-
+            Returns
+            -------
+            This function returns, at each iteration, the graphs with average 
+            reward and averaged loss from the batch of generated trajectories 
+            (SMILES).
+             """
+             
             # Initialize the variable that will contain the output of each prediction
             dimen = len(self.table)
             states = np.empty(0).reshape(0,dimen)
-            pol_rewards_kor = []
-            pol_rewards_qed = []
-            all_rewards = []
-            all_losses = []
+            
             # Re-compile the model to adapt the loss function and optimizer to the RL problem
             self.generator_biased.model = self.get_policy_model(np.arange(43))
             self.generator_biased.model.load_weights(self.configReinforce.model_name_unbiased)
+            
             for i in range(self.configReinforce.n_iterations):
-                
-#                    if self.scalarization_mode == 'chebyshev':
-#                    preds_range = generation(self.generator_biased,self.predictor,self.configReinforce)
-#                    else:
-#                        preds_range = -1
-
                 for j in trange(self.configReinforce.n_policy, desc='Policy gradient progress'):
                     
                     cur_reward = 0
-                    cur_reward_qed = 0
-                    cur_reward_kor = 0
                     
                     # Necessary object to transform new generated smiles to one-hot encoding
                     token_table = SmilesToTokens()
@@ -142,8 +131,6 @@ class Reinforcement(object):
                     
                         # Sampling new trajectory
                         reward = 0
-                        reward_kor = 0
-                        reward_qed = 0
                        
                         while reward == 0:
                             predictSMILES =  PredictSMILES(self.generator_unbiased,self.generator_biased,True,self.threshold_greedy,self.configReinforce) # generate new trajectory
@@ -160,11 +147,8 @@ class Reinforcement(object):
              
                                 trajectory = 'G' + Chem.MolToSmiles(mol) + 'E'
 #                                trajectory = 'GCCE'
-                            
-                                reward_kor,reward_qed = self.get_reward_MO(self.predictor,trajectory[1:-1])
-                                print(reward_kor,reward_qed)
-                                reward = scalarization(reward_kor,reward_qed,self.scalarization_mode,weights,self.preds_range)
                                 
+                                reward = self.get_reward(self.predictor,trajectory[1:-1],self.property_identifier)
                                 if len(trajectory) > 65:
                                     reward = 0
                                 print(reward)
@@ -178,8 +162,6 @@ class Reinforcement(object):
                         ti,_ = token_table.one_hot_encode(token_table.tokenize(trajectory))
                         discounted_reward = reward
                         cur_reward += reward
-                        cur_reward_kor += reward_kor
-                        cur_reward_qed += reward_qed                        
                  
                         # "Following" the trajectory and accumulating the loss
                         idxs = 0
@@ -227,35 +209,24 @@ class Reinforcement(object):
                     inputs = np.empty(0).reshape(0,0,dimen)
 
                     cur_reward = cur_reward / self.configReinforce.batch_size
-                    cur_reward_qed = cur_reward_qed / self.configReinforce.batch_size
-                    cur_reward_kor = cur_reward_kor / self.configReinforce.batch_size
                
                     # serialize model to JSON
                     model_json = self.generator_biased.model.to_json()
-                    with open(self.configReinforce.model_name_biased + "_"+self.scalarization_mode + '_' +str(pol)+".json", "w") as json_file:
+                    with open(self.configReinforce.model_name_biased + ".json", "w") as json_file:
                         json_file.write(model_json)
                     # serialize weights to HDF5
-                    self.generator_biased.model.save_weights(self.configReinforce.model_name_biased + "_"+self.scalarization_mode + '_' +str(pol)+".h5")
+                    self.generator_biased.model.save_weights(self.configReinforce.model_name_biased + ".h5")
                     print("Updated model saved to disk")
                     
-                    if len(all_rewards) > 2: # decide the threshold of the next generated batch 
-                        self.threshold_greedy = compute_thresh(all_rewards[-3:],self.configReinforce.threshold_set)
+                    if len(self.all_rewards) > 2: # decide the threshold of the next generated batch 
+                        self.threshold_greedy = compute_thresh(self.all_rewards[-3:],self.configReinforce.threshold_set)
  
-                    all_rewards.append(moving_average(all_rewards, cur_reward)) 
-                    pol_rewards_qed.append(moving_average(pol_rewards_qed, cur_reward_qed)) 
-                    pol_rewards_kor.append(moving_average(pol_rewards_kor, cur_reward_kor)) 
-                    all_losses.append(moving_average(all_losses, loss))
+                    self.all_rewards.append(moving_average(self.all_rewards, cur_reward)) 
+                    self.all_losses.append(moving_average(self.all_losses, loss))
     
-                plot_training_progress(all_rewards,all_losses)
-                plot_individual_rewds(pol_rewards_qed,pol_rewards_kor)
-            cumulative_rewards.append(np.mean(all_rewards[-100:]))
-            cumulative_rewards_kor.append(np.mean(pol_rewards_kor[-100:]))
-            cumulative_rewards_qed.append(np.mean(pol_rewards_qed[-100:]))
-            pol+=1
-
-        plot_MO(cumulative_rewards_qed,cumulative_rewards_kor,cumulative_rewards,previous_weights)
-        return cumulative_rewards_qed,cumulative_rewards_kor,cumulative_rewards,previous_weights
-    
+                plot_training_progress(self.all_rewards,self.all_losses)
+        
+        
     def test_generator(self, n_to_generate,iteration, original_model):
         """
         Function to generate molecules with the specified generator model. 
@@ -274,20 +245,18 @@ class Reinforcement(object):
         Returns
         -------
         The plot containing the distribuiton of the property we want to 
-        optimize. It saves one file containing the generated SMILES strings. Also,
-        this function returns the SMILES strings, the predictions for KOR affinity
-        and QED, and, also, the percentages of valid and unique molecules.
+        optimize. It saves one file containing the generated SMILES strings.
         """
-        
         
         if original_model:
              self.generator.model.load_weights(self.configReinforce.model_name_unbiased)
              print("....................................")
              print("original model load_weights is DONE!")
         else:
-             self.generator.model.load_weights(self.configReinforce.model_name_biased + "_" + self.scalarization_mode + "_" + self.best_model+ ".h5")
+             self.generator.model.load_weights(self.configReinforce.model_name_biased + ".h5")
              print("....................................")
              print("updated model load_weights is DONE!")
+    
         
         generated = []
         pbar = tqdm(range(n_to_generate))
@@ -295,35 +264,45 @@ class Reinforcement(object):
             pbar.set_description("Generating molecules...")
             predictSMILES = PredictSMILES(self.generator,None,False,self.threshold_greedy,self.configReinforce)
             generated.append(predictSMILES.sample())
-    
-        sanitized,valid = canonical_smiles(generated,sanitize=True, throw_warning=False)# validar 
+
+        sanitized,valid = canonical_smiles(generated,sanitize=True, throw_warning=False)
         
         san_with_repeated = []
         for smi in sanitized:
             if len(smi) > 1:
                 san_with_repeated.append(smi)
         
-        unique_smiles = len(list(np.unique(san_with_repeated))[1:])
-        percentage_unq = (unique_smiles/len(san_with_repeated))*100
-        
-        # prediction pIC50 KOR
-        prediction_kor = self.predictor.predict(san_with_repeated)
-        
-        # prediction qew
-        mol_list = smiles2mol(san_with_repeated)
-        prediction_qed = qed_calculator(mol_list)
+        unique_smiles = list(np.unique(san_with_repeated))[1:]
+        percentage_unq = (len(unique_smiles)/len(san_with_repeated))*100
+#        rep = []
+#        for smi in unique_smiles:
+#            if smi in data_smiles:
+#                rep.append(smi)
+#        
+#        percentage_valid = (valid/len(sanitized))*100
+#        percentage_unique = (1 - (len(rep)/len(unique_smiles)))*100        
+                
+        if self.property_identifier == 'kor':
+            prediction = self.predictor.predict(san_with_repeated)
+        elif self.property_identifier == 'sas':
+            mol_list = smiles2mol(san_with_repeated)
+            prediction = SAscore(mol_list)
+        elif self.property_identifier == 'qed':
+            mol_list = smiles2mol(san_with_repeated)
+            prediction = qed_calculator(mol_list)
                                                            
-        vld = plot_hist(prediction_kor,n_to_generate,valid,"kor")
-        vld = plot_hist(prediction_qed,n_to_generate,valid,"qed")
+        vld = plot_hist(prediction,n_to_generate,valid,self.property_identifier)
             
         with open(self.configReinforce.file_path_generated + '_' + str(len(san_with_repeated)) + '_iter'+str(iteration)+".smi", 'w') as f:
             for i,cl in enumerate(san_with_repeated):
-                data = str(san_with_repeated[i]) + " ," +  str(prediction_kor[i])+ ", " +str(prediction_qed[i]) 
+                data = str(san_with_repeated[i]) + " ," +  str(prediction[i])
                 f.write("%s\n" % data)  
                 
+        # Compute the internal diversity
+        div = diversity(unique_smiles)
         
-        return san_with_repeated,prediction_kor,prediction_qed,vld,percentage_unq
-                    
+        return generated, prediction,vld,percentage_unq,div
+            
 
     def compare_models(self, n_to_generate,individual_plot):
         """
@@ -339,13 +318,10 @@ class Reinforcement(object):
 
         Returns
         -------
-        The plot that contains the distribuitons of the properties we want to 
+        The plot that contains the distribuitons of the property we want to 
         optimize originated by the original and fine-tuned models. Besides 
         this, it saves a "generated.smi" file containing the valid generated 
-        SMILES and the respective property value in "generated\" folder. Also,
-        it returns the differences between the means of the original and biased
-        predictions for both properties, the percentage of valid and the 
-        internal diversity.
+        SMILES and the respective property value in "data\" folder
         """
 
         self.generator.model.load_weights(self.configReinforce.model_name_unbiased)
@@ -358,22 +334,24 @@ class Reinforcement(object):
             predictSMILES = PredictSMILES(self.generator,None,False,self.threshold_greedy,self.configReinforce)
             generated_unb.append(predictSMILES.sample())
     
-        sanitized_unb,valid_unb = canonical_smiles(generated_unb, sanitize=False, throw_warning=False) # validar 
+        sanitized_unb,valid_unb = canonical_smiles(generated_unb, sanitize=False, throw_warning=False) 
         unique_smiles_unb = list(np.unique(sanitized_unb))[1:]
         
-        #prediction kor
-        prediction_kor_unb = self.predictor.predict(unique_smiles_unb)
-        #prediction qed
-        mol_list_unb = smiles2mol(unique_smiles_unb) 
-        prediction_qed_unb = qed_calculator(mol_list_unb)
-        
+        if self.property_identifier == 'kor':
+            prediction_unb = self.predictor.predict(unique_smiles_unb)
+        elif self.property_identifier == 'qed': 
+            mol_list = smiles2mol(unique_smiles_unb)
+            prediction_unb = qed_calculator(mol_list)
+        elif self.property_identifier == 'sas':
+            mol_list = smiles2mol(unique_smiles_unb)
+            prediction_unb = SAscore(unique_smiles_unb)
+                 
         if individual_plot:
-            plot_hist(prediction_kor_unb,n_to_generate,valid_unb,"kor")
-            plot_hist(prediction_qed_unb,n_to_generate,valid_unb,"qed")
+            plot_hist(prediction_unb,n_to_generate,valid_unb,self.property_identifier)
             
         
         # Load Biased Generator Model 
-        self.generator.model.load_weights(self.configReinforce.model_name_biased + "_" + self.scalarization_mode +  "_" + self.best_model + ".h5")
+        self.generator.model.load_weights(self.configReinforce.model_name_biased + ".h5")
         print("\n --------- Updated model LOADED! ---------")
         
         generated_b = []
@@ -384,77 +362,19 @@ class Reinforcement(object):
             generated_b.append(predictSMILES.sample())
     
         sanitized_b,valid_b = canonical_smiles(generated_b, sanitize=False, throw_warning=False) # validar 
-                
-        san_with_repeated_b = []
-        for smi in sanitized_b:
-            if len(smi) > 1:
-                san_with_repeated_b.append(smi)
+        unique_smiles_b = list(np.unique(sanitized_b))[1:]
         
-        unique_smiles_b = list(np.unique(san_with_repeated_b))[1:]
-        percentage_unq_b = (len(unique_smiles_b)/len(san_with_repeated_b))*100
-        
-#        unique_smiles_b = list(np.unique(sanitized_b))[1:]
-        
-        #prediction kor
-        prediction_kor_b = self.predictor.predict(san_with_repeated_b)
-        #prediction qed
-        mol_list_b = smiles2mol(san_with_repeated_b) 
-        prediction_qed_b = qed_calculator(mol_list_b)
+        if self.property_identifier == 'kor':
+            prediction_b = self.predictor.predict(unique_smiles_b)
+        elif self.property_identifier == 'qed': 
+            mol_list = smiles2mol(unique_smiles_b)
+            prediction_b = qed_calculator(mol_list)
+        elif self.property_identifier == 'sas':
+            mol_list = smiles2mol(unique_smiles_b)
+            prediction_b = SAscore(unique_smiles_b)
+             
+        dif, valid = plot_hist_both(prediction_unb,prediction_b,n_to_generate,valid_unb,valid_b,self.property_identifier)
 
-        # plot both distributions together and compute the % of valid generated by the biased model 
-        dif_qed, valid_qed = plot_hist_both(prediction_qed_unb,prediction_qed_b,n_to_generate,valid_unb,valid_b,"qed")
-        dif_kor, valid_kor = plot_hist_both(prediction_kor_unb,prediction_kor_b,n_to_generate,valid_unb,valid_b,"kor")
-        
-        # Compute the internal diversity
         div = diversity(unique_smiles_b)
         
-        return dif_qed,dif_kor,valid_kor,div,percentage_unq_b
-
-    def drawMols(self):
-        """
-        Function that draws chemical graphs of compounds generated by the opmtized
-        model.
-
-        Parameters:
-        -----------
-        self: it contains the Generator and the configuration parameters
-
-        Returns
-        -------
-        This function returns a figure with the specified number of molecular 
-        graphs indicating the pIC50 for KOR and the QED.
-        """
-        DrawingOptions.atomLabelFontSize = 50
-        DrawingOptions.dotsPerAngstrom = 100
-        DrawingOptions.bondLineWidth = 3
-                  
-        self.generator.model.load_weights(self.configReinforce.model_name_biased + "_" + self.scalarization_mode + "_" + self.best_model+ ".h5")
-
-        generated = []
-        pbar = tqdm(range(self.configReinforce.n_to_generate))
-        for i in pbar:
-            pbar.set_description("Generating molecules...")
-            predictSMILES = PredictSMILES(self.generator,None,False,self.threshold_greedy,self.configReinforce)
-            generated.append(predictSMILES.sample())
-    
-        sanitized,valid = canonical_smiles(generated,sanitize=True, throw_warning=False) 
-        
-        unique_smiles = list(np.unique(sanitized))[1:]
-        
-        # prediction pIC50 KOR
-        prediction_kor = self.predictor.predict(unique_smiles)
-        
-        # prediction qew
-        mol_list = smiles2mol(unique_smiles)
-        prediction_qed = qed_calculator(mol_list)
-                
-        ind = np.random.randint(0, len(mol_list), self.configReinforce.n_to_draw)
-        mols_to_draw = [mol_list[i] for i in ind]
-        
-        legends = []
-        for i in ind:
-            legends.append('pIC50 for KOR: ' + str(round(prediction_kor[i],2)) + '|| QED: ' + str(round(prediction_qed[i],2)))
-        
-        img = Draw.MolsToGridImage(mols_to_draw, molsPerRow=1, subImgSize=(300,300), legends=legends)
-            
-        img.show()
+        return dif,div,valid
