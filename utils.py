@@ -16,6 +16,7 @@ import time
 from bunch import Bunch
 from tqdm import tqdm
 from rdkit.Chem import AllChem
+from rdkit.Chem import Descriptors
 from rdkit import DataStructs
 from rdkit.Chem import QED
 from predictSMILES import *
@@ -54,7 +55,8 @@ def reading_csv(config,property_identifier):
         file_path = config.file_path_logP
     elif property_identifier == "kor":
         file_path = config.file_path_kor
-        
+    elif property_identifier == "a2d":
+        file_path = config.file_path_a2d    
     raw_labels = []
         
     with open(file_path, 'r') as csvFile:
@@ -63,7 +65,7 @@ def reading_csv(config,property_identifier):
         it = iter(reader)
 #        next(it, None)  # skip first item.    
         for row in it:
-            if property_identifier == "jak2" or property_identifier == "kor":
+            if property_identifier == "jak2" or property_identifier == "kor" or property_identifier == "a2d":
                 try:
                     raw_labels.append(float(row[1]))
                 except:
@@ -138,7 +140,7 @@ def smiles2idx(smiles,tokenDict):
     return newSmiles
 
 
-def scalarization(reward_kor,reward_qed,scalarMode,weights,pred_range):
+def scalarization(rewards,scalarMode,weights,pred_range,i):
     """
     This function transforms a vector of two rewards into a unique reward.
     ----------
@@ -152,21 +154,41 @@ def scalarization(reward_kor,reward_qed,scalarMode,weights,pred_range):
     -------
     Returns the scalarized reward according to the scalarization form specified
     """
+    weights = [0.45,0.3,0.25,0.25]
     w_kor = weights[0]
     w_qed = weights[1]
+    w_sas = weights[2]
+    w_logP = weights[3]
+
+    rew_kor = rewards[0]
+    rew_qed = rewards[1]
+    rew_sas = rewards[2]
+    rew_logP = rewards[3]
+    rew_div = rewards[4]
+    
     max_kor = pred_range[0]
     min_kor = pred_range[1]
     max_qed = pred_range[2]
     min_qed = pred_range[3]
+    max_sas = 2.25
+    min_sas = 1
+   
     
-    rescaled_rew_kor = (reward_kor - min_kor)/(max_kor-min_kor)
+    rescaled_rew_sas = (rew_sas - min_sas)/(max_sas-min_sas)
+    
+    if rescaled_rew_sas < 0:
+        rescaled_rew_sas = 0
+    elif rescaled_rew_sas > 1:
+        rescaled_rew_sas = 1
+    
+    rescaled_rew_kor = (rew_kor - min_kor)/(max_kor-min_kor)
     
     if rescaled_rew_kor < 0:
         rescaled_rew_kor = 0
     elif rescaled_rew_kor > 1:
         rescaled_rew_kor = 1
     
-    rescaled_rew_qed = (reward_qed - min_qed)/(max_qed-min_qed)
+    rescaled_rew_qed = (rew_qed - min_qed)/(max_qed-min_qed)
     
     if rescaled_rew_qed < 0:
         rescaled_rew_qed = 0
@@ -174,7 +196,10 @@ def scalarization(reward_kor,reward_qed,scalarMode,weights,pred_range):
         rescaled_rew_qed = 1
     
     if scalarMode == 'linear' or scalarMode == 'ws_linear':
-        return (w_kor*rescaled_rew_kor + w_qed*rescaled_rew_qed)*3.10
+        if i%2 == 0:
+            return (w_kor*rescaled_rew_kor + w_qed*rescaled_rew_qed + w_sas*rew_sas)*3.10*rew_div
+        else:
+            return (w_kor*rescaled_rew_kor + w_qed*rescaled_rew_qed + w_logP*rew_logP)*3.10*rew_div
     
     elif scalarMode == 'chebyshev':
         dist_qed = 0
@@ -416,7 +441,7 @@ def denormalization(predictions,labels):
           
     return predictions
 
-def get_reward(predictor, smile,property_identifier):
+def get_reward(predictor, smile,memory_smiles,property_identifier):
     """
     This function takes the predictor model and the SMILES string to return 
     a numerical reward for the specified property
@@ -440,13 +465,28 @@ def get_reward(predictor, smile,property_identifier):
         reward = QED.qed(list_ss[0])
         
         reward = np.exp(reward/4)
-    else:
+    elif property_identifier == 'a2d':
     
         pred = predictor.predict(list_ss)
-        reward = np.exp(pred/4-1)
+#        reward = np.exp(pred/4-1)
+        reward = np.exp(pred/3-(6/5))
 #        reward = np.exp(-pred/6+2)
+    elif property_identifier == 'kor':
+        pred = predictor.predict(list_ss)
+        reward = np.exp(pred/4-1)
+#    diversity = 1
+#    if len(memory_smiles)> 20:
+#        diversity = external_diversity(smile,memory_smiles)
+#        
+#    if diversity < 0.75:
+#        rew_div = 0.9
+#        print("\nREPETITION")
+#    elif diversity > 0.9:
+#        rew_div = 1.12
+#    else:
+        rew_div = 1
 
-    return reward
+    return (reward*rew_div)*(6/7)
   
 def padding_one_hot(smiles,tokens): 
     """
@@ -472,7 +512,7 @@ def padding_one_hot(smiles,tokens):
 
     return smiles
 
-def get_reward_MO(predictor, smile):
+def get_reward_MO(predictor_kor,smile,uniq,memory_smiles):
     """
     This function takes the predictor model and the SMILES string to return 
     the numerical rewards from both the KOR and QED properties.
@@ -487,23 +527,57 @@ def get_reward_MO(predictor, smile):
     Outputs the reward values for the KOR and QED properties
     """
     
+    rewards = []
     list_ss = [smile] 
-
-    mol = smiles2mol(list_ss[0])
-    reward_qed = qed_calculator(mol)
-    # SAScore prediction
-#    list_ss[0] = Chem.MolFromSmiles(smile)
-#    sas_list = SAscore(list_ss)
-#    sas_smiles = sas_list[0] 
-    reward_qed = np.exp(reward_qed[0]/4)
 
     # pIC50 for kor prediction
     list_ss = [smile] 
-    pred = predictor.predict(list_ss)
-
+    pred = predictor_kor.predict(list_ss)
     reward_kor = np.exp(pred/4 - 1)
 #    reward = np.exp(pred/10) - 1
-    return reward_kor,reward_qed
+    rewards.append(reward_kor[0])
+
+    # QED property
+    mol = smiles2mol(list_ss[0])
+    reward_qed = qed_calculator(mol)
+    reward_qed = np.exp(reward_qed[0]/4)
+    rewards.append(reward_qed)
+
+    # SAScore property
+    list_ss[0] = Chem.MolFromSmiles(smile)
+    sas_list = SAscore(list_ss)
+    rew_sas = np.exp(-sas_list[0]/5 + 1)
+    rewards.append(rew_sas)
+
+    # logP property
+    mol = Chem.MolFromSmiles(smile)
+    pred = Descriptors.MolLogP(mol)
+    if pred > -1 and pred < 3:
+        reward_logP = 1
+    else:
+        reward_logP = 0
+    rewards.append(reward_logP)
+    
+    # uniqueness
+#    if uniq == True: 
+#        rew_uniq = 0.8
+#    else:
+#        rew_uniq = 0.2
+#    rewards.append(rew_uniq)
+
+    diversity = 1
+    if len(memory_smiles)> 30:
+        diversity = external_diversity(smile,memory_smiles)
+        
+    if diversity < 0.75:
+        rew_div = 0.01
+        print("\Alert: Similar compounds")
+    else:
+        rew_div = 1
+
+    rewards.append(rew_div)
+
+    return rewards
 
 def moving_average(previous_values, new_value, ma_window_size=10): 
     """
@@ -538,7 +612,7 @@ def plot_training_progress(training_rewards,training_losses):
     plt.ylabel('Average losses')
     plt.show()
     
-def plot_individual_rewds(rew_qed,rew_kor):
+def plot_individual_rewds(rew_qed,rew_kor,rew_sas,rew_logP):
     """
     This function plots the evolution of rewards for each property we want to
     optimize
@@ -554,7 +628,23 @@ def plot_individual_rewds(rew_qed,rew_kor):
     plt.xlabel('Training iterations')
     plt.ylabel('Average rewards kor')
     plt.show()
-    
+    plt.plot(rew_sas)
+    plt.xlabel('Training iterations')
+    plt.ylabel('Average reward SA score')
+    plt.show()
+    plt.plot(rew_logP)
+    plt.xlabel('Training iterations')
+    plt.ylabel('Average reward logP')
+    plt.show()
+#    plt.plot(rew_uniq)
+#    plt.xlabel('Training iterations')
+#    plt.ylabel('Average reward uniqness')
+#    plt.show()
+#    plt.plot(rew_div)
+#    plt.xlabel('Training iterations')
+#    plt.ylabel('Average reward diversity')
+#    plt.show()
+#    
 def plot_evolution(pred_original,pred_iteration85,property_identifier):
     """
     This function plots the comparison between two distributions of some specified 
@@ -713,7 +803,8 @@ def compute_thresh(rewards,thresh_set):
     if thresh_set == 1:
         thresholds_set = [0.15,0.3,0.2]
     elif thresh_set == 2:
-        thresholds_set = [0.05,0.3,0.1] 
+#        thresholds_set = [0.05,0.15,0.1] 
+        thresholds_set = [0,0,0] 
     
     threshold = 0
     if q_t_1 < 1 and q_t < 1:
@@ -745,6 +836,46 @@ def qed_calculator(mols):
             pass
         
     return qed_values
+
+def external_diversity(file_A,file_B):
+
+    td = 0
+    file_A = [file_A]
+    fps_A = []
+    for i, row in enumerate(file_A):
+        try:
+            mol = Chem.MolFromSmiles(row)
+            fps_A.append(AllChem.GetMorganFingerprint(mol, 6))
+        except:
+            print('ERROR: Invalid SMILES!')
+            
+        
+    
+    if file_B == None:
+        for ii in range(len(fps_A)):
+            for xx in range(len(fps_A)):
+                ts = 1 - DataStructs.TanimotoSimilarity(fps_A[ii], fps_A[xx])
+                td += ts          
+      
+        td = td/len(fps_A)**2
+    else:
+        fps_B = []
+        for j, row in enumerate(file_B):
+            try:
+                mol = Chem.MolFromSmiles(row)
+                fps_B.append(AllChem.GetMorganFingerprint(mol, 6))
+            except:
+                print('ERROR: Invalid SMILES!') 
+        
+        
+        for jj in range(len(fps_A)):
+            for xx in range(len(fps_B)):
+                ts = 1 - DataStructs.TanimotoSimilarity(fps_A[jj], fps_B[xx]) 
+                td += ts
+        
+        td = td / (len(fps_A)*len(fps_B))
+    print("Tanimoto distance: " + str(td))  
+    return td
 
 def diversity(smiles_list):
     """
@@ -948,3 +1079,17 @@ def plot_MO(cumulative_rewards_qed,cumulative_rewards_kor,cumulative_rewards,pre
     #plt.yticks(np.arange(0,5,0.5))
 
     plt.show()
+    
+    
+def logPcalculator(list_smiles):
+    
+    predictions = []
+    for smile in list_smiles:
+        try:
+            mol = Chem.MolFromSmiles(smile)
+            logP = Descriptors.MolLogP(mol)
+            predictions.append(logP)
+        except:
+            print('Invalid')
+            
+    return predictions

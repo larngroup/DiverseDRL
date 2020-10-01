@@ -22,8 +22,11 @@ def main():
     generator_model=Model(configReinforce)
     generator_model.model.load_weights(configReinforce.model_name_unbiased)
 
-     # Load the Predictor of KOR affinity object 
-    predictor = Predictor(configReinforce,'kor')
+     # Load the Predictor object of KOR affinity 
+    predictor_kor = Predictor(configReinforce,'kor')
+    
+    # Load the Predictor object of logP property
+    #predictor_logP = Predictor(configReinforce,'kor')
 
     # Initialize lists to evaluate the model
     difs_kor = [] # List with the differences between the averages of KOR affinity distributions (G_0 and G_optimized)
@@ -33,22 +36,22 @@ def main():
     uniqs = [] # List with the % of unique SMILES strings 
 
     # Create Reinforcement Learning (RL) object
-    RL_obj = Reinforcement(generator_model, predictor, configReinforce)
+    RL_obj = Reinforcement(generator_model, predictor_kor, configReinforce)
     
     
-    RL_obj.drawMols()
+#    RL_obj.drawMols()
      # SMILES generation test with the unbiased Generator
-    smiles_original, prediction_original_kor,prediction_original_qed,valid,unique = RL_obj.test_generator(configReinforce.n_to_generate,0,True)
+#    smiles_original, prediction_original_kor,prediction_original_qed,valid,unique = RL_obj.test_generator(configReinforce.n_to_generate,0,True)
 
     # Step of RL training  
     cumulative_rewards_qed,cumulative_rewards_kor,cumulative_rewards,previous_weights = RL_obj.policy_gradient()
     
     # SMILES generation test after 60 RL training iterations 
-    smiles_iteration85,prediction_iteration85_kor,prediction_iteration85_qed,valid,unique = RL_obj.test_generator(configReinforce.n_to_generate,85, False)
+#    smiles_iteration85,prediction_iteration85_kor,prediction_iteration85_qed,valid,unique = RL_obj.test_generator(configReinforce.n_to_generate,85, False)
    
     # Plot the changes in the distribution after applying RL
-    plot_evolution(prediction_original_kor,prediction_iteration85_kor,'kor')
-    plot_evolution(prediction_original_qed,prediction_iteration85_qed,'qed')
+#    plot_evolution(prediction_original_kor,prediction_iteration85_kor,'kor')
+#    plot_evolution(prediction_original_qed,prediction_iteration85_qed,'qed')
 #    
 #    # Other way of evaluating the differences before and after applying RL. It 
 #    # evaluates the internal diversity, validity and uniqueness

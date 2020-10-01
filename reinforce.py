@@ -90,7 +90,7 @@ class Reinforcement(object):
         
         return self.generator_biased.model
 
-    def policy_gradient(self, gamma=0.97):    
+    def policy_gradient(self, gamma=0.99):    
             """
             Implementation of the policy gradient algorithm.
     
@@ -116,6 +116,8 @@ class Reinforcement(object):
             # Re-compile the model to adapt the loss function and optimizer to the RL problem
             self.generator_biased.model = self.get_policy_model(np.arange(43))
             self.generator_biased.model.load_weights(self.configReinforce.model_name_unbiased)
+            
+            memory_smiles = []
             
             for i in range(self.configReinforce.n_iterations):
                 for j in trange(self.configReinforce.n_policy, desc='Policy gradient progress'):
@@ -148,9 +150,15 @@ class Reinforcement(object):
                                 trajectory = 'G' + Chem.MolToSmiles(mol) + 'E'
 #                                trajectory = 'GCCE'
                                 
-                                reward = self.get_reward(self.predictor,trajectory[1:-1],self.property_identifier)
+                                
+                                if len(memory_smiles) > 30:
+                                        memory_smiles.remove(memory_smiles[0])                                    
+                                memory_smiles.append(s)
+                                
                                 if len(trajectory) > 65:
                                     reward = 0
+                                else:
+                                    reward = self.get_reward(self.predictor,trajectory[1:-1],memory_smiles,self.property_identifier)
                                 print(reward)
                                
                             except:
@@ -247,7 +255,7 @@ class Reinforcement(object):
         The plot containing the distribuiton of the property we want to 
         optimize. It saves one file containing the generated SMILES strings.
         """
-        
+#        
         if original_model:
              self.generator.model.load_weights(self.configReinforce.model_name_unbiased)
              print("....................................")
@@ -256,7 +264,8 @@ class Reinforcement(object):
              self.generator.model.load_weights(self.configReinforce.model_name_biased + ".h5")
              print("....................................")
              print("updated model load_weights is DONE!")
-    
+#    
+
         
         generated = []
         pbar = tqdm(range(n_to_generate))
@@ -282,7 +291,7 @@ class Reinforcement(object):
 #        percentage_valid = (valid/len(sanitized))*100
 #        percentage_unique = (1 - (len(rep)/len(unique_smiles)))*100        
                 
-        if self.property_identifier == 'kor':
+        if self.property_identifier == 'kor' or self.property_identifier == 'a2d':
             prediction = self.predictor.predict(san_with_repeated)
         elif self.property_identifier == 'sas':
             mol_list = smiles2mol(san_with_repeated)
@@ -337,7 +346,7 @@ class Reinforcement(object):
         sanitized_unb,valid_unb = canonical_smiles(generated_unb, sanitize=False, throw_warning=False) 
         unique_smiles_unb = list(np.unique(sanitized_unb))[1:]
         
-        if self.property_identifier == 'kor':
+        if self.property_identifier == 'kor' or self.property_identifier == 'a2d':
             prediction_unb = self.predictor.predict(unique_smiles_unb)
         elif self.property_identifier == 'qed': 
             mol_list = smiles2mol(unique_smiles_unb)
@@ -362,9 +371,19 @@ class Reinforcement(object):
             generated_b.append(predictSMILES.sample())
     
         sanitized_b,valid_b = canonical_smiles(generated_b, sanitize=False, throw_warning=False) # validar 
-        unique_smiles_b = list(np.unique(sanitized_b))[1:]
+        unique_smiles_b = list(set(sanitized_b))
+          
+        san_with_repeated_b = []
+        for smi in sanitized_b:
+            if len(smi) > 1:
+                san_with_repeated_b.append(smi)
         
-        if self.property_identifier == 'kor':
+        percentage_unq_b = (len(unique_smiles_b)/len(san_with_repeated_b))*100
+            
+#        percentage_unq_b = (len(unique_smiles_b)/len(sanitized_b))*100
+#        percentage_unq_b = (len(unique_smiles_b)/len(valid_mol))*100
+        
+        if self.property_identifier == 'kor'or self.property_identifier == 'a2d':
             prediction_b = self.predictor.predict(unique_smiles_b)
         elif self.property_identifier == 'qed': 
             mol_list = smiles2mol(unique_smiles_b)
@@ -377,4 +396,10 @@ class Reinforcement(object):
 
         div = diversity(unique_smiles_b)
         
-        return dif,div,valid
+        desirable = 0
+        for pred in prediction_b: 
+            if pred >= 6.5:
+                desirable +=1
+        perc_desirable = desirable/len(unique_smiles_b)
+        
+        return dif,div,valid,percentage_unq_b,perc_desirable

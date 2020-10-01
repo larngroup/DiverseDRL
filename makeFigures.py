@@ -161,8 +161,8 @@ def performance_barplot():
     """
     objects = ('RNN', 'SVM', 'FCNN', 'RF', 'KNN')
     y_pos = np.arange(len(objects))
-    performance_mse = [0.0224, 0.0306, 0.0397, 0.0255, 0.037826]
     
+    performance_mse = [0.0224, 0.0306, 0.0397, 0.0255, 0.037826]
     plt.bar(y_pos, performance_mse, align='center', alpha=0.5, color=['blue' ,'yellow', 'red', 'green','orange'],  edgecolor='black')
     plt.xticks(y_pos, objects)
     plt.ylabel('MSE')
@@ -170,14 +170,25 @@ def performance_barplot():
     plt.show()
     
 
-    y_pos = np.arange(len(objects))
-    performance_q2 = [80.12, 74.857, 66.004, 78.96, 69.144]
-    
+    performance_q2 = [80.12, 74.857, 66.004, 78.96, 69.144]   
     plt.bar(y_pos, performance_q2, align='center', alpha=0.5, color=['blue' ,'yellow', 'red', 'green','orange'],  edgecolor='black')
-
     plt.xticks(y_pos, objects)
     plt.ylabel('Q2 Score')
     plt.title('QSAR models evaluation: Q-squared')
+    plt.show()
+    
+    performance_rmse = [0.1496, 0.1749, 0.1992, 0.1597, 0.1945]   
+    plt.bar(y_pos, performance_rmse, align='center', alpha=0.5, color=['blue' ,'yellow', 'red', 'green','orange'],  edgecolor='black')
+    plt.xticks(y_pos, objects)
+    plt.ylabel('RMSE')
+    plt.title('QSAR models evaluation: Root Mean Squared Error')
+    plt.show()
+    
+    performance_ccc = [89.862, 84.43, 80.1, 88.2, 82.34]   
+    plt.bar(y_pos, performance_ccc, align='center', alpha=0.5, color=['blue' ,'yellow', 'red', 'green','orange'],  edgecolor='black')
+    plt.xticks(y_pos, objects)
+    plt.ylabel('CCC')
+    plt.title('QSAR models evaluation: Concordance Correlation Coefficient')
     plt.show()
 
 def regression_plot(y_true,y_pred):
@@ -297,11 +308,11 @@ def main():
     y_true = [1, 2, 3,4,5,2,2,1,3]
     y_pred = [1.1, 1.6, 3, 4.1, 4.5, 1.8, 2,1.6,3.1]
 #    regression_plot(y_true,y_pred)
- #   performance_barplot()
+    performance_barplot()
 #    violin_plot(predictor)
 #    mw_logp_plot()
 #    plot_MO()
 #    plot_rapido()
-    compute_hypervolume()
+#    compute_hypervolume()
 if __name__ == '__main__':
     main()

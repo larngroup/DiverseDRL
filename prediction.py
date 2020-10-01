@@ -40,7 +40,7 @@ class Predictor(object):
             model_path = "predictor_models_jak2\\model"
         elif property_identifier == "logP":
             model_path = "predictor_models_logP\\model"
-        elif property_identifier == "kor":
+        elif property_identifier == "kor" or property_identifier == 'a2d':
             model_path = "predictor_models_kor\\model"
             
         for i in range(5):

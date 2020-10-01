@@ -52,7 +52,7 @@ class PredictSMILES(BasePredictSMILES):
         probabilities.
         """
         #streched = np.log(preds) / self.config.sampling_temp
-        streched = np.log(preds) /0.9#0.8
+        streched = np.log(preds) /0.92#1.1#0.92#0.91
         streched_probs = np.exp(streched) / np.sum(np.exp(streched))
         return np.random.choice(len(streched), p=streched_probs)
 
@@ -83,7 +83,7 @@ class PredictSMILES(BasePredictSMILES):
                     
                 next_a = self.sample_with_temp(preds)                
                 sequence += self.table[next_a]
-                contador=contador+1;
+                contador=contador + 1
             sequence = sequence[1:].rstrip('E')
             if len(sequence) < minlen:
                 continue

@@ -20,11 +20,12 @@ import keras.backend as K
 from keras import optimizers
 from rdkit.Chem.Draw import DrawingOptions
 from rdkit.Chem import Draw
+from rdkit.Chem import Descriptors
 
 sess = tf.compat.v1.InteractiveSession()            
        
 class Reinforcement(object):
-    def __init__(self, generator, predictor, configReinforce):  
+    def __init__(self, generator, predictor_kor, configReinforce):  
         """
         Constructor for the Reinforcement object.
         Parameters
@@ -52,14 +53,14 @@ class Reinforcement(object):
         self.generator_biased.model.load_weights(self.configReinforce.model_name_unbiased)
         self.token_table = SmilesToTokens()
         self.table = self.token_table.table
-        self.predictor = predictor
+        self.predictor_kor = predictor_kor
         self.get_reward_MO = get_reward_MO
         self.threshold_greedy = 0.1
         self.n_table = len(self.token_table.table)
         self.preds_range = [3.0,1.381,1.284,1.015] #3.2,1.29
-        self.best_model = '4'
+        self.best_model = '9'
 #        self.adam = optimizers.Adam(learning_rate=0.0001, beta_1=0.9, beta_2=0.999, amsgrad=False)
-        self.adam = optimizers.Adam()
+        self.adam = optimizers.Adam(clipvalue=4)
         self.scalarization_mode = 'linear' # it can be 'linear', 'ws_linear', or 'chebyshev'
 
     def custom_loss(self,magic_matrix):
@@ -80,7 +81,7 @@ class Reinforcement(object):
         return self.generator_biased.model
         
 
-    def policy_gradient(self, gamma=0.97):    
+    def policy_gradient(self, gamma=1):    
         """
         Implementation of the policy gradient algorithm.
 
@@ -115,11 +116,16 @@ class Reinforcement(object):
             states = np.empty(0).reshape(0,dimen)
             pol_rewards_kor = []
             pol_rewards_qed = []
+            pol_rewards_sas = []
+            pol_rewards_logP = []
+#            pol_rewards_uniq = []
+#            pol_rewards_div = []
             all_rewards = []
             all_losses = []
             # Re-compile the model to adapt the loss function and optimizer to the RL problem
             self.generator_biased.model = self.get_policy_model(np.arange(43))
             self.generator_biased.model.load_weights(self.configReinforce.model_name_unbiased)
+            memory_smiles = []
             for i in range(self.configReinforce.n_iterations):
                 
 #                    if self.scalarization_mode == 'chebyshev':
@@ -132,19 +138,23 @@ class Reinforcement(object):
                     cur_reward = 0
                     cur_reward_qed = 0
                     cur_reward_kor = 0
-                    
+                    cur_reward_sas = 0
+                    cur_reward_logP = 0
+#                    cur_reward_div = 0
+#                    cur_reward_uniq = 0
+                   
                     # Necessary object to transform new generated smiles to one-hot encoding
                     token_table = SmilesToTokens()
                     aux_matrix = np.zeros((65,1))
                     
                     ii = 0
-                    for _ in range(self.configReinforce.batch_size):
+                    
+                    for m in range(self.configReinforce.batch_size):
                     
                         # Sampling new trajectory
                         reward = 0
-                        reward_kor = 0
-                        reward_qed = 0
-                       
+  
+                       	uniq = True
                         while reward == 0:
                             predictSMILES =  PredictSMILES(self.generator_unbiased,self.generator_biased,True,self.threshold_greedy,self.configReinforce) # generate new trajectory
                             trajectory = predictSMILES.sample() 
@@ -161,13 +171,21 @@ class Reinforcement(object):
                                 trajectory = 'G' + Chem.MolToSmiles(mol) + 'E'
 #                                trajectory = 'GCCE'
                             
-                                reward_kor,reward_qed = self.get_reward_MO(self.predictor,trajectory[1:-1])
-                                print(reward_kor,reward_qed)
-                                reward = scalarization(reward_kor,reward_qed,self.scalarization_mode,weights,self.preds_range)
+                                if len(memory_smiles) > 30:
+                                        memory_smiles.remove(memory_smiles[0])                                    
+                                memory_smiles.append(s)
                                 
                                 if len(trajectory) > 65:
                                     reward = 0
+                                else:
+                                	rewards = self.get_reward_MO(self.predictor_kor,trajectory[1:-1],uniq,memory_smiles)
+                                	print(rewards)
+                                	reward = scalarization(rewards,self.scalarization_mode,weights,self.preds_range,m)
+
                                 print(reward)
+
+                                
+
                                
                             except:
                                 reward = 0
@@ -178,9 +196,13 @@ class Reinforcement(object):
                         ti,_ = token_table.one_hot_encode(token_table.tokenize(trajectory))
                         discounted_reward = reward
                         cur_reward += reward
-                        cur_reward_kor += reward_kor
-                        cur_reward_qed += reward_qed                        
-                 
+                        cur_reward_kor += rewards[0]
+                        cur_reward_qed += rewards[1]
+                        cur_reward_sas += rewards[2]
+                        cur_reward_logP += rewards[3]
+#                        cur_reward_uniq += rewards[4]
+#                        cur_reward_div += rewards[5]                       
+                        
                         # "Following" the trajectory and accumulating the loss
                         idxs = 0
                         for p in range(1,len(trajectory_input[0,:,])):
@@ -229,10 +251,13 @@ class Reinforcement(object):
                     cur_reward = cur_reward / self.configReinforce.batch_size
                     cur_reward_qed = cur_reward_qed / self.configReinforce.batch_size
                     cur_reward_kor = cur_reward_kor / self.configReinforce.batch_size
-               
+                    cur_reward_logP = cur_reward_logP / self.configReinforce.batch_size
+                    cur_reward_sas = cur_reward_sas / self.configReinforce.batch_size
+#                    cur_reward_uniq = cur_reward_uniq / self.configReinforce.batch_size
+#                    cur_reward_div = cur_reward_div / self.configReinforce.batch_size
                     # serialize model to JSON
                     model_json = self.generator_biased.model.to_json()
-                    with open(self.configReinforce.model_name_biased + "_"+self.scalarization_mode + '_' +str(pol)+".json", "w") as json_file:
+                    with open(self.configReinforce.model_name_biased + "_" + self.scalarization_mode + '_' +str(pol)+".json", "w") as json_file:
                         json_file.write(model_json)
                     # serialize weights to HDF5
                     self.generator_biased.model.save_weights(self.configReinforce.model_name_biased + "_"+self.scalarization_mode + '_' +str(pol)+".h5")
@@ -243,14 +268,19 @@ class Reinforcement(object):
  
                     all_rewards.append(moving_average(all_rewards, cur_reward)) 
                     pol_rewards_qed.append(moving_average(pol_rewards_qed, cur_reward_qed)) 
-                    pol_rewards_kor.append(moving_average(pol_rewards_kor, cur_reward_kor)) 
+                    pol_rewards_kor.append(moving_average(pol_rewards_kor, cur_reward_kor))
+                    pol_rewards_sas.append(moving_average(pol_rewards_sas, cur_reward_sas)) 
+                    pol_rewards_logP.append(moving_average(pol_rewards_logP, cur_reward_logP))
+#                    pol_rewards_uniq.append(moving_average(pol_rewards_uniq, cur_reward_uniq)) 
+#                    pol_rewards_div.append(moving_average(pol_rewards_div, cur_reward_div))
+#                    
                     all_losses.append(moving_average(all_losses, loss))
     
                 plot_training_progress(all_rewards,all_losses)
-                plot_individual_rewds(pol_rewards_qed,pol_rewards_kor)
-            cumulative_rewards.append(np.mean(all_rewards[-100:]))
-            cumulative_rewards_kor.append(np.mean(pol_rewards_kor[-100:]))
-            cumulative_rewards_qed.append(np.mean(pol_rewards_qed[-100:]))
+                plot_individual_rewds(pol_rewards_qed,pol_rewards_kor,pol_rewards_sas,pol_rewards_logP)
+            cumulative_rewards.append(np.mean(all_rewards[-15:]))
+            cumulative_rewards_kor.append(np.mean(pol_rewards_kor[-15:]))
+            cumulative_rewards_qed.append(np.mean(pol_rewards_qed[-15:]))
             pol+=1
 
         plot_MO(cumulative_rewards_qed,cumulative_rewards_kor,cumulative_rewards,previous_weights)
@@ -307,18 +337,26 @@ class Reinforcement(object):
         percentage_unq = (unique_smiles/len(san_with_repeated))*100
         
         # prediction pIC50 KOR
-        prediction_kor = self.predictor.predict(san_with_repeated)
+        prediction_kor = self.predictor_kor.predict(san_with_repeated)
         
-        # prediction qew
+        # prediction qed
         mol_list = smiles2mol(san_with_repeated)
         prediction_qed = qed_calculator(mol_list)
-                                                           
+                                                       
+        # prediction logP
+        prediction_logP = logPcalculator(san_with_repeated)
+        
+        # prediction sas
+        prediction_sas = SAscore(mol_list)
+        
         vld = plot_hist(prediction_kor,n_to_generate,valid,"kor")
         vld = plot_hist(prediction_qed,n_to_generate,valid,"qed")
+        vld = plot_hist(prediction_logP,n_to_generate,valid,"logP")
+        vld = plot_hist(prediction_sas,n_to_generate,valid,"sas")
             
         with open(self.configReinforce.file_path_generated + '_' + str(len(san_with_repeated)) + '_iter'+str(iteration)+".smi", 'w') as f:
             for i,cl in enumerate(san_with_repeated):
-                data = str(san_with_repeated[i]) + " ," +  str(prediction_kor[i])+ ", " +str(prediction_qed[i]) 
+                data = str(san_with_repeated[i]) + " ," +  str(prediction_kor[i])+ ", " +str(prediction_logP[i]) 
                 f.write("%s\n" % data)  
                 
         
@@ -362,14 +400,23 @@ class Reinforcement(object):
         unique_smiles_unb = list(np.unique(sanitized_unb))[1:]
         
         #prediction kor
-        prediction_kor_unb = self.predictor.predict(unique_smiles_unb)
+        prediction_kor_unb = self.predictor_kor.predict(unique_smiles_unb)
+        
         #prediction qed
         mol_list_unb = smiles2mol(unique_smiles_unb) 
         prediction_qed_unb = qed_calculator(mol_list_unb)
         
+        # prediction sas
+        prediction_sas_unb = SAscore(mol_list_unb)
+        
+        # prediction_logP
+        prediction_logP_unb = logPcalculator(unique_smiles_unb)
+        
         if individual_plot:
             plot_hist(prediction_kor_unb,n_to_generate,valid_unb,"kor")
             plot_hist(prediction_qed_unb,n_to_generate,valid_unb,"qed")
+            plot_hist(prediction_sas_unb,n_to_generate,valid_unb,"sas")
+            plot_hist(prediction_logP_unb,n_to_generate,valid_unb,"logP")
             
         
         # Load Biased Generator Model 
@@ -396,14 +443,22 @@ class Reinforcement(object):
 #        unique_smiles_b = list(np.unique(sanitized_b))[1:]
         
         #prediction kor
-        prediction_kor_b = self.predictor.predict(san_with_repeated_b)
+        prediction_kor_b = self.predictor_kor.predict(san_with_repeated_b)
         #prediction qed
         mol_list_b = smiles2mol(san_with_repeated_b) 
         prediction_qed_b = qed_calculator(mol_list_b)
+        
+        # prediction sas
+        prediction_sas_b = SAscore(mol_list_b)
+        
+        # prediction_logP
+        prediction_logP_b = logPcalculator(unique_smiles_b)
 
         # plot both distributions together and compute the % of valid generated by the biased model 
         dif_qed, valid_qed = plot_hist_both(prediction_qed_unb,prediction_qed_b,n_to_generate,valid_unb,valid_b,"qed")
         dif_kor, valid_kor = plot_hist_both(prediction_kor_unb,prediction_kor_b,n_to_generate,valid_unb,valid_b,"kor")
+        dif_sas, valid_sas = plot_hist_both(prediction_sas_unb,prediction_sas_b,n_to_generate,valid_unb,valid_b,"sas")
+        dif_logP, valid_logP = plot_hist_both(prediction_logP_unb,prediction_logP_b,n_to_generate,valid_unb,valid_b,"logP")
         
         # Compute the internal diversity
         div = diversity(unique_smiles_b)
@@ -442,7 +497,7 @@ class Reinforcement(object):
         unique_smiles = list(np.unique(sanitized))[1:]
         
         # prediction pIC50 KOR
-        prediction_kor = self.predictor.predict(unique_smiles)
+        prediction_kor = self.predictor_kor.predict(unique_smiles)
         
         # prediction qew
         mol_list = smiles2mol(unique_smiles)
