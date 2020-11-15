@@ -52,7 +52,7 @@ class PredictSMILES(BasePredictSMILES):
         probabilities.
         """
         #streched = np.log(preds) / self.config.sampling_temp
-        streched = np.log(preds) /0.92#1.1#0.92#0.91
+        streched = np.log(preds) /0.93 #0.84
         streched_probs = np.exp(streched) / np.sum(np.exp(streched))
         return np.random.choice(len(streched), p=streched_probs)
 

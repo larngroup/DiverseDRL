@@ -61,11 +61,9 @@ class Reinforcement(object):
         self.n_table = len(self.token_table.table)
 #        self.sgd = optimizers.SGD(lr=0.0001, decay=1e-6, momentum=0.9, nesterov=True)
 #        self.adadelta = optimizers.Adadelta(learning_rate=0.0001, rho=0.95, epsilon=1e-07)
-#        self.adam = optimizers.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.999, amsgrad=False)
-        self.adam = optimizers.Adam()
+        self.adam = optimizers.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.999, amsgrad=False, clipvalue=3)
+#        self.adam = optimizers.Adam()
     
-
-
     def custom_loss(self,aux_matrix):
         """
         Custom loss function with a auxilary matrix, computed for each batch of 
@@ -218,12 +216,13 @@ class Reinforcement(object):
 
                     cur_reward = cur_reward / self.configReinforce.batch_size
                
+                                                      
                     # serialize model to JSON
                     model_json = self.generator_biased.model.to_json()
-                    with open(self.configReinforce.model_name_biased + ".json", "w") as json_file:
+                    with open(self.configReinforce.model_name_biased + str(i) + ".json", "w") as json_file:
                         json_file.write(model_json)
                     # serialize weights to HDF5
-                    self.generator_biased.model.save_weights(self.configReinforce.model_name_biased + ".h5")
+                    self.generator_biased.model.save_weights(self.configReinforce.model_name_biased + str(i) + ".h5")
                     print("Updated model saved to disk")
                     
                     if len(self.all_rewards) > 2: # decide the threshold of the next generated batch 
@@ -281,14 +280,14 @@ class Reinforcement(object):
             if len(smi) > 1:
                 san_with_repeated.append(smi)
         
-        unique_smiles = list(np.unique(san_with_repeated))[1:]
+        unique_smiles = list(set(san_with_repeated))
         percentage_unq = (len(unique_smiles)/len(san_with_repeated))*100
 #        rep = []
 #        for smi in unique_smiles:
 #            if smi in data_smiles:
 #                rep.append(smi)
 #        
-#        percentage_valid = (valid/len(sanitized))*100
+        percentage_valid = (valid/n_to_generate)*100
 #        percentage_unique = (1 - (len(rep)/len(unique_smiles)))*100        
                 
         if self.property_identifier == 'kor' or self.property_identifier == 'a2d':
@@ -310,7 +309,13 @@ class Reinforcement(object):
         # Compute the internal diversity
         div = diversity(unique_smiles)
         
-        return generated, prediction,vld,percentage_unq,div
+        desirable = 0
+        for pred in prediction: 
+            if pred >= 6.5:
+                desirable +=1
+        perc_desirable = desirable/len(san_with_repeated)
+        
+        return generated, prediction,percentage_valid,percentage_unq,div,perc_desirable
             
 
     def compare_models(self, n_to_generate,individual_plot):
@@ -383,7 +388,7 @@ class Reinforcement(object):
 #        percentage_unq_b = (len(unique_smiles_b)/len(sanitized_b))*100
 #        percentage_unq_b = (len(unique_smiles_b)/len(valid_mol))*100
         
-        if self.property_identifier == 'kor'or self.property_identifier == 'a2d':
+        if self.property_identifier == 'kor' or self.property_identifier == 'a2d':
             prediction_b = self.predictor.predict(unique_smiles_b)
         elif self.property_identifier == 'qed': 
             mol_list = smiles2mol(unique_smiles_b)
@@ -400,6 +405,6 @@ class Reinforcement(object):
         for pred in prediction_b: 
             if pred >= 6.5:
                 desirable +=1
-        perc_desirable = desirable/len(unique_smiles_b)
+        perc_desirable = desirable/len(san_with_repeated_b)
         
         return dif,div,valid,percentage_unq_b,perc_desirable

@@ -55,10 +55,10 @@ def main():
 #    smiles_original, prediction_original,valid,unique,div = RL_obj.test_generator(configReinforce.n_to_generate,0,True)
     
 #      Training Generator with RL    
-    RL_obj.policy_gradient()
+#    RL_obj.policy_gradient()
     
     # SMILES generation after 85 training iterations 
-#    smiles_iteration85,prediction_iteration85,valid,unique,div = RL_obj.test_generator(configReinforce.n_to_generate,85, False)
+    smiles_iteration85,prediction_iteration85,valid,unique,div,perc_desirable = RL_obj.test_generator(configReinforce.n_to_generate,85, False)
    
     # Plot to evaluate the differences before and after perform the RL training step
 #    plot_evolution(prediction_original,prediction_iteration85,property_identifier)

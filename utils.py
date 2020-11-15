@@ -468,25 +468,25 @@ def get_reward(predictor, smile,memory_smiles,property_identifier):
     elif property_identifier == 'a2d':
     
         pred = predictor.predict(list_ss)
-#        reward = np.exp(pred/4-1)
-        reward = np.exp(pred/3-(6/5))
+#        reward = np.exp(pred/3-(6/5))
+        reward = np.exp(pred/4 - 0.77)
 #        reward = np.exp(-pred/6+2)
     elif property_identifier == 'kor':
         pred = predictor.predict(list_ss)
         reward = np.exp(pred/4-1)
-#    diversity = 1
-#    if len(memory_smiles)> 20:
-#        diversity = external_diversity(smile,memory_smiles)
-#        
-#    if diversity < 0.75:
-#        rew_div = 0.9
-#        print("\nREPETITION")
-#    elif diversity > 0.9:
-#        rew_div = 1.12
-#    else:
+    diversity = 1
+    if len(memory_smiles)> 20:
+        diversity = external_diversity(smile,memory_smiles)
+        
+    if diversity < 0.75:
+        rew_div = 0.9
+        print("\nREPETITION")
+    elif diversity > 0.9:
         rew_div = 1
-
-    return (reward*rew_div)*(6/7)
+    else:
+        rew_div = 1
+        
+    return (reward*rew_div)
   
 def padding_one_hot(smiles,tokens): 
     """
@@ -803,8 +803,8 @@ def compute_thresh(rewards,thresh_set):
     if thresh_set == 1:
         thresholds_set = [0.15,0.3,0.2]
     elif thresh_set == 2:
-#        thresholds_set = [0.05,0.15,0.1] 
-        thresholds_set = [0,0,0] 
+        thresholds_set = [0.05,0.2,0.1] 
+#        thresholds_set = [0,0,0] 
     
     threshold = 0
     if q_t_1 < 1 and q_t < 1:
